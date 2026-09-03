@@ -42,7 +42,7 @@
 
 ## 系統架構圖
 
-![系統架構圖](./architecture.svg)
+![系統架構圖](./architecture.png)
 
 [*開啟線上互動式架構圖 (HTML)*](./architecture.html)
 
