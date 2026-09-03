@@ -1,0 +1,6 @@
+SET OpenAiKey TO $''''''
+Scripting.RunPowershellScript.RunScript Script: $'''& "D:\CustomerDeliveryBundle\home\ubuntu\start_pad_browser.ps1" `
+    -PreferredBrowser Edge `
+    -ErrorRoot "D:\CustomerDeliveryBundle\CustomerPackage\runtime\RPA_Error" `
+    -TargetUrl "http://cpmesap03:8084/WMS/SysFrame/" `
+    -CdpPort 9222''' ScriptOutput=> PowershellOutput2

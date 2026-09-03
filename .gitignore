@@ -1,0 +1,9 @@
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+*.log
+CustomerPackage/runtime/RPA_Error/*
+!CustomerPackage/runtime/RPA_Error/.gitkeep
+scratch/
+.DS_Store

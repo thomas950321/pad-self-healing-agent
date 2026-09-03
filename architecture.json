@@ -1,0 +1,46 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "CustomerDeliveryBundle 系統架構圖",
+    "output": "architecture.html",
+    "quality_profile": "showcase",
+    "locale": "zh-CN",
+    "views": [
+      { "id": "rpa-bridge", "label": "RPA 流程與瀏覽器接管", "focus": ["pad_engine", "browser_script", "browser_instance"], "note": "PAD 啟動瀏覽器並啟用 CDP 9222 監聽 Port" },
+      { "id": "self-healing", "label": "AI 錯誤分析與自癒流程", "focus": ["exception_handler", "agent_launcher", "python_agent", "ai_gateway", "browser_instance"], "note": "例外發生時自動擷取 context 並呼叫 AI Gateway 修復頁面" },
+      { "id": "operations", "label": "日誌稽核與 Teams 通報", "focus": ["python_agent", "runtime_error", "teams_connector"], "note": "寫入 result.json 稽核紀錄並發送 Teams 通知" }
+    ]
+  },
+  "components": [
+    { "id": "pad_engine", "type": "external", "label": "Power Automate Desktop", "sublabel": "PAD RPA 流程引擎", "pos": [40, 250], "size": [170, 70] },
+    { "id": "browser_script", "type": "backend", "label": "瀏覽器啟動器", "sublabel": "start_pad_browser.ps1", "pos": [290, 140], "size": [180, 70] },
+    { "id": "browser_instance", "type": "frontend", "label": "Chrome / Edge 瀏覽器", "sublabel": "CDP 9222 連接埠", "pos": [550, 140], "size": [170, 70] },
+    { "id": "exception_handler", "type": "backend", "label": "例外處理模組", "sublabel": "AI_ExceptionHandler.txt", "pos": [290, 360], "size": [180, 70] },
+    { "id": "agent_launcher", "type": "backend", "label": "自癒代理啟動器", "sublabel": "start_webwright_agent.ps1", "pos": [550, 360], "size": [180, 70] },
+    { "id": "python_agent", "type": "backend", "label": "WebWright 自癒代理", "sublabel": "webwright_agent.py", "pos": [810, 360], "size": [180, 70] },
+    { "id": "ai_gateway", "type": "cloud", "label": "內部 AI Gateway", "sublabel": "http://172.22.8.15:8080", "pos": [810, 140], "size": [180, 70] },
+    { "id": "teams_connector", "type": "messagebus", "label": "Microsoft Teams", "sublabel": "Teams Connector 通報", "pos": [1070, 360], "size": [170, 70] },
+    { "id": "runtime_error", "type": "database", "label": "RPA 錯誤產物庫", "sublabel": "context 與 result.json", "pos": [810, 540], "size": [180, 70] }
+  ],
+  "boundaries": [
+    { "kind": "region", "label": "Windows 本機執行環境 (CustomerDeliveryBundle)", "wraps": ["pad_engine", "browser_script", "browser_instance", "exception_handler", "agent_launcher", "python_agent", "runtime_error"] },
+    { "kind": "security-group", "label": "企業內網服務層", "wraps": ["ai_gateway", "teams_connector"] }
+  ],
+  "connections": [
+    { "id": "pad-to-script", "from": "pad_engine", "to": "browser_script", "label": "執行啟動流程" },
+    { "id": "script-to-browser", "from": "browser_script", "to": "browser_instance", "label": "啟動 CDP 9222" },
+    { "id": "pad-to-handler", "from": "pad_engine", "to": "exception_handler", "label": "捕捉流程例外" },
+    { "id": "handler-to-agentlauncher", "from": "exception_handler", "to": "agent_launcher", "label": "喚起自癒代理" },
+    { "id": "agentlauncher-to-pythonagent", "from": "agent_launcher", "to": "python_agent", "label": "執行 Python 腳本", "labelAt": [770, 444] },
+    { "id": "pythonagent-to-cdp", "from": "python_agent", "to": "browser_instance", "label": "Playwright CDP 接管", "variant": "emphasis", "fromSide": "left", "toSide": "bottom" },
+    { "id": "pythonagent-to-gateway", "from": "python_agent", "to": "ai_gateway", "label": "LLM 分析與修復計畫", "variant": "security", "fromSide": "top", "toSide": "bottom" },
+    { "id": "pythonagent-to-store", "from": "python_agent", "to": "runtime_error", "label": "寫入稽核日誌", "fromSide": "bottom", "toSide": "top", "labelDy": 24 },
+    { "id": "pythonagent-to-teams", "from": "python_agent", "to": "teams_connector", "label": "發送 Teams 告警" }
+  ],
+  "cards": [
+    { "dot": "cyan", "title": "RPA 流程與瀏覽器接管", "items": ["PAD 執行 PowerShell 腳本，透過 CDP Port 9222 喚起 Chrome/Edge 專屬 Profile", "PAD 擴充功能與 CDP 協定維持穩定雙向網頁控制"] },
+    { "dot": "emerald", "title": "LLM AI 自修復機制", "items": ["例外處理流程自動擷取螢幕畫面 (ERROR.jpg) 與 context.json 上下文", "WebWright Agent 使用 Playwright 直連 CDP 9222 檢視 DOM，並由 AI Gateway 指引修復動作"] },
+    { "dot": "amber", "title": "企業營運與稽核通報", "items": ["透過 Bundle 內建 Wheelhouse 與 install.ps1 支援零網際網路完全離線建置", "修復結果與完整診斷寫入 result.json，並發送 Teams 通報"] }
+  ]
+}

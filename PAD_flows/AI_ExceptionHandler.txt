@@ -1,0 +1,553 @@
+SET HealStatus TO $'''FAILED'''
+SET HealMessage TO $'''Not started'''
+SET NewSelector TO $''' '''
+SET TechnicalDetail TO $''' '''
+SET RecoveredStep TO $''' '''
+SET NeedHuman TO True
+SET CurrentURL TO $''' '''
+SET FailedActionName TO $''' '''
+SET CorrelationId TO $''' '''
+SET ErrorFolder TO $'''D:\\CustomerDeliveryBundle\\CustomerPackage\\runtime\\RPA_Error'''
+SET ErrorImagePath TO $'''D:\\CustomerDeliveryBundle\\CustomerPackage\\runtime\\RPA_Error\\ERROR.jpg'''
+SET ContextJsonPath TO $'''D:\\CustomerDeliveryBundle\\CustomerPackage\\runtime\\RPA_Error\\context.json'''
+SET ResultJsonPath TO $'''D:\\CustomerDeliveryBundle\\CustomerPackage\\runtime\\RPA_Error\\result.json'''
+SET StartWebwrightAgentScriptPath TO $'''D:\\CustomerDeliveryBundle\\home\\ubuntu\\start_webwright_agent.ps1'''
+SET BackendMode TO $'''default'''
+Scripting.RunPowershellScript.RunScript Script: $'''$aiBaseUrl = \"http://172.22.8.15:8080\"
+
+Write-Output $aiBaseUrl''' ScriptOutput=> AI_API_BASE_URL
+SET AI_MODEL TO $'''gpt-5.4-nano'''
+SET AI_SYSTEM_NAME TO $'''PAD_Self_Healing_System'''
+Scripting.RunPowershellScript.RunScript Script: $'''
+$contextPath = \"%ContextJsonPath%\"
+$errorImagePath = \"%ErrorImagePath%\"
+$errorFolder = \"%ErrorFolder%\"
+
+foreach ($path in @($errorFolder, $contextPath, $errorImagePath, \"%ResultJsonPath%\")) {
+    if (-not [string]::IsNullOrWhiteSpace($path)) {
+        $parent = Split-Path -Parent $path
+        if (-not [string]::IsNullOrWhiteSpace($parent) -and -not (Test-Path -LiteralPath $parent)) {
+            New-Item -ItemType Directory -Path $parent -Force | Out-Null
+        }
+    }
+}
+
+if (Test-Path -LiteralPath $contextPath) {
+    try {
+        $rawContext = Get-Content -Raw -Encoding UTF8 -LiteralPath $contextPath
+        if (-not [string]::IsNullOrWhiteSpace($rawContext)) {
+            $contextObject = $rawContext | ConvertFrom-Json
+            $defaults = [ordered]@{
+                CurrentURL = \"\"
+                ScreenshotPath = \"\"
+            }
+
+            foreach ($key in $defaults.Keys) {
+                if (-not ($contextObject.PSObject.Properties.Name -contains $key)) {
+                    $contextObject | Add-Member -NotePropertyName $key -NotePropertyValue $defaults[$key]
+                }
+            }
+
+            $compactContext = ($contextObject | ConvertTo-Json -Compress -Depth 20).Trim()
+            [System.IO.File]::WriteAllText($contextPath, $compactContext, [System.Text.UTF8Encoding]::new($false))
+        }
+    }
+    catch {
+    }
+}
+'''
+IF (File.IfFile.Exists File: ContextJsonPath) THEN
+    Scripting.RunPowershellScript.RunScript Script: $'''$contextPath = \"%ContextJsonPath%\"
+$currentUrl = \"\"
+$screenshotPath = \"\"
+$failedActionName = \"\"
+$correlationId = \"\"
+
+if (Test-Path -LiteralPath $contextPath) {
+    try {
+        $rawContext = Get-Content -Raw -Encoding UTF8 -LiteralPath $contextPath
+
+        if (-not [string]::IsNullOrWhiteSpace($rawContext)) {
+            $contextObject = $rawContext | ConvertFrom-Json
+
+            if ($contextObject.PSObject.Properties.Name -contains \"CurrentURL\") {
+                $currentUrl = [string]$contextObject.CurrentURL
+            }
+
+            if ($contextObject.PSObject.Properties.Name -contains \"ScreenshotPath\") {
+                $screenshotPath = [string]$contextObject.ScreenshotPath
+            }
+
+            if ($contextObject.PSObject.Properties.Name -contains \"FailedActionName\") {
+                $failedActionName = [string]$contextObject.FailedActionName
+            }
+
+            if ($contextObject.PSObject.Properties.Name -contains \"CorrelationId\") {
+                $correlationId = [string]$contextObject.CorrelationId
+            }
+        }
+    }
+    catch {
+        # context.json 無法讀取時保持空值
+    }
+}
+
+Write-Output \"$currentUrl`t$screenshotPath`t$failedActionName`t$correlationId\"''' ScriptOutput=> ContextOutput
+    Text.SplitText.SplitWithDelimiter Text: ContextOutput CustomDelimiter: $'''	''' IsRegEx: False Result=> ContextOutputLines
+    IF ContextOutputLines[0] <> $''' ''' THEN
+        SET CurrentURL TO ContextOutputLines[0]
+    END
+    IF ContextOutputLines[1] <> $''' ''' THEN
+        SET ScreenshotPath TO ContextOutputLines[1]
+    END
+    IF ContextOutputLines[2] <> $''' ''' THEN
+        SET FailedActionName TO ContextOutputLines[2]
+    END
+    IF ContextOutputLines[3] <> $''' ''' THEN
+        SET CorrelationId TO ContextOutputLines[3]
+    END
+END
+Scripting.RunPowershellScript.RunScript Script: $'''$resultPath = \"%ResultJsonPath%\"
+if ([string]::IsNullOrWhiteSpace($resultPath)) {
+    $resultPath = Join-Path \"%ErrorFolder%\" \"result.json\"
+}
+
+if (Test-Path -LiteralPath $resultPath) {
+    try {
+        $rawResult = Get-Content -LiteralPath $resultPath -Raw -Encoding UTF8
+        if (-not [string]::IsNullOrWhiteSpace($rawResult)) {
+            $resultObject = $rawResult | ConvertFrom-Json
+
+            $defaults = [ordered]@{
+                HealStatus = \'\'
+                HealMessage = \'\'
+                TechnicalDetail = \'\'
+                NewSelector = \'\'
+                RecoveredStep = \'\'
+                NeedHuman = $false
+                Verification = $null
+                VerificationResult = $null
+                ActionPlan = @()
+                ExecutionLog = @()
+            }
+
+            foreach ($key in $defaults.Keys) {
+                if (-not ($resultObject.PSObject.Properties.Name -contains $key)) {
+                    $resultObject | Add-Member -NotePropertyName $key -NotePropertyValue $defaults[$key]
+                }
+            }
+
+            $compactResult = $resultObject | ConvertTo-Json -Compress -Depth 20
+            [System.IO.File]::WriteAllText(
+                $resultPath,
+                $compactResult,
+                [System.Text.UTF8Encoding]::new($false)
+            )
+        }
+    }
+    catch {
+    }
+}'''
+SET ScreenshotPath TO ErrorImagePath
+SET displayCurrentURL TO $'''N/A'''
+SET displayFailedActionName TO $'''N/A'''
+SET displayScreenshotPath TO ErrorImagePath
+SET displayCorrelationId TO $'''N/A'''
+IF CurrentURL <> $''' ''' THEN
+    SET displayCurrentURL TO CurrentURL
+END
+IF FailedActionName <> $''' ''' THEN
+    SET displayFailedActionName TO FailedActionName
+END
+IF ScreenshotPath <> $''' ''' THEN
+    SET displayScreenshotPath TO ScreenshotPath
+END
+IF CorrelationId <> $''' ''' THEN
+    SET displayCorrelationId TO CorrelationId
+END
+Workstation.TakeScreenshot.TakeScreenshotOfForegroundWindowAndSaveToFile File: ErrorImagePath ImageFormat: System.ImageFormat.Jpg
+Scripting.RunPowershellScript.RunScript Script: $'''
+[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+$OutputEncoding = [System.Text.Encoding]::UTF8
+
+try {
+    $errorFolder = \"%ErrorFolder%\"
+    $contextPath = \"%ContextJsonPath%\"
+    $resultPath = \"%ResultJsonPath%\"
+    $errorImagePath = \"%ErrorImagePath%\"
+    $startWebwrightAgentScript = \"%StartWebwrightAgentScriptPath%\"
+
+    if ([string]::IsNullOrWhiteSpace($errorFolder) -and -not [string]::IsNullOrWhiteSpace($contextPath)) {
+        $errorFolder = Split-Path -Parent $contextPath
+    }
+    if (-not (Test-Path $errorFolder)) {
+        New-Item -ItemType Directory -Path $errorFolder -Force | Out-Null
+    }
+
+    $env:OPENAI_API_KEY = \"%OpenAiKey%\"
+    $env:AI_API_BASE_URL = \"%AI_API_BASE_URL%\"
+    $env:AI_MODEL = \"%AI_MODEL%\"
+    $env:AI_SYSTEM_NAME = \"%AI_SYSTEM_NAME%\"
+    $env:PAD_PACKAGE_ROOT = \"D:\\CustomerDeliveryBundle\"
+
+    if ([string]::IsNullOrWhiteSpace($contextPath)) {
+        $contextPath = Join-Path $errorFolder \"context.json\"
+    }
+    if ([string]::IsNullOrWhiteSpace($resultPath)) {
+        $resultPath = Join-Path $errorFolder \"result.json\"
+    }
+    if ([string]::IsNullOrWhiteSpace($errorImagePath)) {
+        $errorImagePath = Join-Path $errorFolder \"ERROR.jpg\"
+    }
+    if ([string]::IsNullOrWhiteSpace($startWebwrightAgentScript)) {
+        $startWebwrightAgentScript = \"D:\\CustomerDeliveryBundle\\home\\ubuntu\\start_webwright_agent.ps1\"
+    }
+
+    $robinLogDirectory = \"C:\\ProgramData\\Microsoft\\Power Automate\\Logs\"
+    $robinLogPath = \"\"
+    $robinFailedActionName = \"\"
+    $robinFailedActionSelector = \"\"
+    $robinCorrelationId = \"\"
+    $robinFailureReason = \"\"
+    $robinFound = $false
+
+    try {
+        $robinLogFiles = @(Get-ChildItem -LiteralPath $robinLogDirectory -Filter \"*RobinRobot.log\" -File -ErrorAction SilentlyContinue |
+            Sort-Object LastWriteTime -Descending |
+            Select-Object -First 12)
+
+        foreach ($robinLogFile in $robinLogFiles) {
+            $robinLogPath = $robinLogFile.FullName
+            $robinLogLines = @(Get-Content -LiteralPath $robinLogPath -Tail 2000 -Encoding UTF8 -ErrorAction SilentlyContinue)
+
+            for ($index = $robinLogLines.Count - 1; $index -ge 0; $index--) {
+                $logLine = [string]$robinLogLines[$index]
+                if ([string]::IsNullOrWhiteSpace($logLine)) {
+                    continue
+                }
+
+                try {
+                    $logEntry = $logLine | ConvertFrom-Json
+                }
+                catch {
+                    continue
+                }
+
+                $eventData = $logEntry.eventData
+                if ($null -eq $eventData) {
+                    continue
+                }
+
+                $robinAction = $eventData.robinActionInfo
+                $runtimeInfo = $eventData.webAutomationRuntimeInfo
+                $actionName = [string]$robinAction.action
+                $runtimeActionName = [string]$runtimeInfo.action
+                $exceptionType = [string]$logEntry.exceptionType
+                $exceptionText = [string]$logEntry.exception
+                $logMessage = [string]$logEntry.message
+                $isErrorEvent = ($logEntry.event -match \"exception\") -or ($logEntry.traceLevel -eq \"Error\") -or (-not [string]::IsNullOrWhiteSpace($exceptionType))
+                $isClickAction = ($actionName -match \"Click\") -or ($runtimeActionName -match \"Click\")
+                $isElementNotFound = ($exceptionType -match \"ElementNotFound\") -or ($exceptionText -match \"Element not found\") -or ($logMessage -match \"Element not found\")
+
+                if (-not $isErrorEvent -or (-not $isClickAction -and -not $isElementNotFound)) {
+                    continue
+                }
+
+                $selectorParts = @()
+                $selectorItems = @($runtimeInfo.selectorInfo)
+                foreach ($selectorItem in ($selectorItems | Select-Object -First 2)) {
+                    if ($null -eq $selectorItem) {
+                        continue
+                    }
+
+                    $itemParts = @()
+                    $targetTag = [string]$selectorItem.targetTag
+                    if (-not [string]::IsNullOrWhiteSpace($targetTag)) {
+                        $itemParts += $targetTag.Trim()
+                    }
+
+                    $tagsUsed = @($selectorItem.tagsUsed | ForEach-Object { [string]$_ } | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
+                    if ($tagsUsed.Count -gt 0) {
+                        $itemParts += ($tagsUsed -join \"+\")
+                    }
+
+                    $attributesUsed = @($selectorItem.attributesUsed | ForEach-Object { [string]$_ } | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
+                    if ($attributesUsed.Count -gt 0) {
+                        $itemParts += (\"attrs=\" + ($attributesUsed -join \",\"))
+                    }
+
+                    if ($itemParts.Count -gt 0) {
+                        $selectorParts += ($itemParts -join \"/\")
+                    }
+                }
+
+                $robinFailedActionSelector = (($selectorParts -join \" | \") -replace \"[\\r\\n\\t]\", \" \").Trim()
+                $actionText = if (-not [string]::IsNullOrWhiteSpace($actionName)) { $actionName.Trim() } else { $runtimeActionName.Trim() }
+                if (-not [string]::IsNullOrWhiteSpace($runtimeActionName) -and $runtimeActionName.Trim() -ne $actionText) {
+                    $actionText = \"$actionText/$($runtimeActionName.Trim())\"
+                }
+                if ([string]::IsNullOrWhiteSpace($actionText)) {
+                    $actionText = \"WebAutomation\"
+                }
+
+                if ($isElementNotFound) {
+                    $robinFailureReason = \"element_not_found\"
+                }
+                elseif (($exceptionType -match \"Timeout\") -or ($exceptionText -match \"timed out\")) {
+                    $robinFailureReason = \"timeout\"
+                }
+                else {
+                    $robinFailureReason = \"runtime_error\"
+                }
+
+                $nameParts = @($actionText)
+                if (-not [string]::IsNullOrWhiteSpace($robinFailedActionSelector)) {
+                    $nameParts += $robinFailedActionSelector
+                }
+                $nameParts += $robinFailureReason
+                $robinFailedActionName = (($nameParts -join \" - \") -replace \"[\\r\\n\\t]\", \" \").Trim()
+                $robinCorrelationId = ([string]$logEntry.correlationId).Trim()
+                if ([string]::IsNullOrWhiteSpace($robinCorrelationId)) {
+                    $robinCorrelationId = ([string]$logEntry.runId).Trim()
+                }
+                $robinFound = $true
+                break
+            }
+
+            if ($robinFound) {
+                break
+            }
+        }
+    }
+    catch {
+    }
+
+    $displayCurrentURL = if ([string]::IsNullOrWhiteSpace(\"%CurrentURL%\")) { \"N/A\" } else { \"%CurrentURL%\" }
+    $displayFailedActionName = if ([string]::IsNullOrWhiteSpace(\"%FailedActionName%\")) { \"N/A\" } else { \"%FailedActionName%\" }
+    $displayScreenshotPath = if ([string]::IsNullOrWhiteSpace(\"%ScreenshotPath%\")) { $errorImagePath } else { \"%ScreenshotPath%\" }
+    $displayCorrelationId = if ([string]::IsNullOrWhiteSpace(\"%CorrelationId%\")) { \"N/A\" } else { \"%CorrelationId%\" }
+
+    $displayFailedActionName = ([string]$displayFailedActionName -replace \"[\\r\\n\\t]\", \" \").Trim()
+    $displayCorrelationId = ([string]$displayCorrelationId -replace \"[\\r\\n\\t]\", \" \").Trim()
+
+    if (([string]::IsNullOrWhiteSpace($displayFailedActionName) -or $displayFailedActionName -ieq \"N/A\") -and -not [string]::IsNullOrWhiteSpace($robinFailedActionName)) {
+        $displayFailedActionName = $robinFailedActionName
+    }
+    if (([string]::IsNullOrWhiteSpace($displayCorrelationId) -or $displayCorrelationId -ieq \"N/A\") -and -not [string]::IsNullOrWhiteSpace($robinCorrelationId)) {
+        $displayCorrelationId = $robinCorrelationId
+    }
+    $timestampUtc = [DateTime]::UtcNow.ToString(\"o\")
+
+    $contextObject = [ordered]@{
+        CurrentURL = $displayCurrentURL
+        ScreenshotPath = $displayScreenshotPath
+        CorrelationId = $displayCorrelationId
+        FailedActionName = $displayFailedActionName
+        FailedActionSource = if (-not [string]::IsNullOrWhiteSpace($robinFailedActionName)) { \"robin_log\" } else { \"context\" }
+        FailedActionLogPath = $robinLogPath
+        FailedActionSelector = $robinFailedActionSelector
+        FailureReason = $robinFailureReason
+        PadPackageRoot = \"D:\\CustomerDeliveryBundle\"
+        TargetPageURL = \"\"
+        TargetPageTitle = \"\"
+        TimestampUtc = $timestampUtc
+    }
+
+    $contextJson = $contextObject | ConvertTo-Json -Depth 5 -Compress
+    [System.IO.File]::WriteAllText($contextPath, $contextJson, [System.Text.UTF8Encoding]::new($false))
+    $stdoutPath = Join-Path $errorFolder \"bridge_stdout.log\"
+    $stderrPath = Join-Path $errorFolder \"bridge_stderr.log\"
+
+    foreach ($path in @($resultPath, $stdoutPath, $stderrPath)) {
+        if (Test-Path -LiteralPath $path) {
+            Remove-Item -LiteralPath $path -Force -ErrorAction SilentlyContinue
+        }
+    }
+
+    if (-not (Test-Path -LiteralPath $startWebwrightAgentScript)) {
+        throw \"Missing start_webwright_agent.ps1 at $startWebwrightAgentScript\"
+    }
+
+    & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $startWebwrightAgentScript -ContextFilePath $contextPath -ErrorImagePath $errorImagePath 1> $stdoutPath 2> $stderrPath
+    if (-not (Test-Path $resultPath)) {
+        throw \"Missing result.json at $resultPath (exit code: $LASTEXITCODE)\"
+    }
+
+    $resultItem = Get-Item -LiteralPath $resultPath
+    if ($resultItem.Length -le 0) {
+        throw \"result.json was created but is empty at $resultPath (exit code: $LASTEXITCODE)\"
+    }
+
+    $rawResult = Get-Content -Raw -Encoding UTF8 $resultPath
+    $resultObject = $rawResult | ConvertFrom-Json
+    $defaults = [ordered]@{
+        HealStatus = \"\"
+        HealMessage = \"\"
+        TechnicalDetail = \"\"
+        NewSelector = \"\"
+        RecoveredStep = \"\"
+        NeedHuman = $false
+        Verification = $null
+        VerificationResult = $null
+        ActionPlan = @()
+        ExecutionLog = @()
+    }
+    foreach ($key in $defaults.Keys) {
+        if (-not ($resultObject.PSObject.Properties.Name -contains $key)) {
+            $resultObject | Add-Member -NotePropertyName $key -NotePropertyValue $defaults[$key]
+        }
+    }
+    $compactResult = ($resultObject | ConvertTo-Json -Compress -Depth 20).Trim()
+    $compactResult
+}
+catch {
+    $technicalDetail = $_.Exception.Message
+    $fallback = [PSCustomObject]@{
+        HealStatus = \"FAILED\"
+        HealMessage = \"Self-healing could not complete. Please check browser CDP port 9222, start_webwright_agent.ps1, and whether result.json was produced.\"
+        TechnicalDetail = $technicalDetail
+        NewSelector = \"\"
+        RecoveredStep = \"\"
+        NeedHuman = $true
+        Verification = $null
+        VerificationResult = $null
+        ActionPlan = @()
+        ExecutionLog = @()
+    }
+
+    $fallbackResult = $fallback | ConvertTo-Json -Compress -Depth 20
+    [System.IO.File]::WriteAllText($resultPath, $fallbackResult, [System.Text.UTF8Encoding]::new($false))
+    $fallbackResult
+}
+'''
+Scripting.RunPowershellScript.RunScript Script: $'''
+$resultPath = \"%ResultJsonPath%\"
+if ([string]::IsNullOrWhiteSpace($resultPath)) {
+    $resultPath = Join-Path \"%ErrorFolder%\" \"result.json\"
+}
+
+function Normalize-Field {
+    param([object]$Value)
+    if ($null -eq $Value) {
+        return \"\"
+    }
+
+    return ([string]$Value -replace \"`r`n\", \" \" -replace \"`r\", \" \" -replace \"`n\", \" \" -replace \"`t\", \" \").Trim()
+}
+
+function Normalize-Hint {
+    param([object]$Value)
+
+    $text = Normalize-Field $Value
+    if ([string]::IsNullOrWhiteSpace($text) -or $text -ieq \"N/A\") {
+        return \"\"
+    }
+
+    return $text
+}
+
+$healStatus = \"\"
+$healMessage = \"\"
+$technicalDetail = \"\"
+$newSelector = \"\"
+$recoveredStep = \"\"
+$needHuman = \"False\"
+$currentUrl = \"\"
+$failedActionName = \"\"
+$correlationId = \"\"
+
+if (Test-Path -LiteralPath $resultPath) {
+    try {
+        $rawResult = Get-Content -Raw -Encoding UTF8 -LiteralPath $resultPath
+        if (-not [string]::IsNullOrWhiteSpace($rawResult)) {
+            $resultObject = $rawResult | ConvertFrom-Json
+            $healStatus = Normalize-Field $resultObject.HealStatus
+            $healMessage = Normalize-Field $resultObject.HealMessage
+            $technicalDetail = Normalize-Field $resultObject.TechnicalDetail
+            $newSelector = Normalize-Field $resultObject.NewSelector
+            $recoveredStep = Normalize-Field $resultObject.RecoveredStep
+            $needHuman = Normalize-Field $resultObject.NeedHuman
+            $currentUrl = Normalize-Hint $resultObject.CurrentURL
+            $failedActionName = Normalize-Hint $resultObject.FailedActionName
+            $correlationId = Normalize-Hint $resultObject.CorrelationId
+        }
+    }
+    catch {
+    }
+}
+
+Write-Output ($healStatus + \"`t\" + $healMessage + \"`t\" + $technicalDetail + \"`t\" + $newSelector + \"`t\" + $recoveredStep + \"`t\" + $needHuman + \"`t\" + $currentUrl + \"`t\" + $failedActionName + \"`t\" + $correlationId)
+''' ScriptOutput=> WebwrightOutput
+Text.SplitText.SplitWithDelimiter Text: WebwrightOutput CustomDelimiter: $'''	''' IsRegEx: False Result=> WebwrightOutputLines
+SET HealStatus TO WebwrightOutputLines[0]
+SET HealMessage TO WebwrightOutputLines[1]
+SET TechnicalDetail TO WebwrightOutputLines[2]
+SET NewSelector TO WebwrightOutputLines[3]
+SET RecoveredStep TO WebwrightOutputLines[4]
+SET NeedHuman TO WebwrightOutputLines[5]
+IF WebwrightOutputLines[6] <> $''' ''' THEN
+    SET CurrentURL TO WebwrightOutputLines[6]
+END
+IF WebwrightOutputLines[7] <> $''' ''' THEN
+    SET FailedActionName TO WebwrightOutputLines[7]
+END
+IF WebwrightOutputLines[8] <> $''' ''' THEN
+    SET CorrelationId TO WebwrightOutputLines[8]
+END
+IF CurrentURL <> $''' ''' THEN
+    SET displayCurrentURL TO CurrentURL
+END
+IF FailedActionName <> $''' ''' THEN
+    SET displayFailedActionName TO FailedActionName
+END
+IF CorrelationId <> $''' ''' THEN
+    SET displayCorrelationId TO CorrelationId
+END
+@@location: 'Channel'
+@@'body/recipient/groupId': ''
+@@'body/recipient/channelId': ''
+@@'InputSchema:body': '501329572'
+@@connectionDisplayName: 'Crcfdc0_shared_teams_e94fd235'
+External.InvokeCloudConnector Connection: 'e84063ca-40b1-4573-be83-5ffc4f34df2f' ConnectorId: '/providers/Microsoft.PowerApps/apis/shared_teams' OperationId: 'PostMessageToConversation' @poster: $'''User''' @location: $'''Channel''' @'body/subject': $'''PAD 異常通知與修復結果''' @'body/messageBody': $'''PAD 異常通知<br>
+狀態：%HealStatus%<br>
+錯誤步驟：%RecoveredStep%<br>
+AI 判斷：%HealMessage%<br>
+驗證結果：%TechnicalDetail%<br>
+需要人工處理：%NeedHuman%<br>
+關聯 ID：%displayCorrelationId%''' @PostMessageToConversationResponse=> PostMessageToConversationResponse
+Scripting.RunPowershellScript.RunScript Script: $'''try {
+    $errorRoot = \"D:\\CustomerDeliveryBundle\\CustomerPackage\\runtime\\RPA_Error\"
+
+    foreach ($folderName in @(\"edge-cdp-ba10\", \"pad-ext-ba10\")) {
+        $folderPath = Join-Path $errorRoot $folderName
+        if (Test-Path -LiteralPath $folderPath) {
+            Remove-Item -LiteralPath $folderPath -Recurse -Force -ErrorAction SilentlyContinue
+        }
+    }
+}
+catch {
+}'''
+
+# [ControlRepository][PowerAutomateDesktop]
+
+{
+  "ControlRepositorySymbols": [],
+  "ImageRepositorySymbol": {
+    "Repository": "{\r\n  \"Folders\": [],\r\n  \"Images\": [],\r\n  \"Version\": 1\r\n}",
+    "ImportMetadata": {},
+    "Name": "imgrepo"
+  },
+  "ConnectionReferences": [
+    {
+      "ConnectorId": "/providers/Microsoft.PowerApps/apis/shared_teams",
+      "DisplayName": "Crcfdc0_shared_teams_e94fd235",
+      "InternalId": "e84063ca-40b1-4573-be83-5ffc4f34df2f",
+      "IsDisabled": false,
+      "LogicalName": "Crcfdc0_shared_teams_e94fd23502b84a668073024c6828fc40",
+      "IsEmbedded": false,
+      "ConnectionName": "shared-teams-d0cdd6f32de5472db1e2c644f0e8f746",
+      "ConnectionDisplayName": "Chieh.Hung.Tsai@BenQMaterials.com"
+    }
+  ]
+}

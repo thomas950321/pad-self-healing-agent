@@ -1,0 +1,5 @@
+SET OpenAiKey TO $''''''
+Scripting.RunPowershellScript.RunScript Script: $'''& \"D:\\CustomerDeliveryBundle\\home\\ubuntu\\start_pad_browser.ps1\" `
+    -PreferredBrowser Chrome `
+    -ErrorRoot \"D:\\CustomerDeliveryBundle\\CustomerPackage\\runtime\\RPA_Error\" `
+    -TargetUrl \"https://flora2.moenv.gov.tw/MainSite/Lin/index.aspx#gsc.tab=0\"''' ScriptOutput=> PowershellOutput2
